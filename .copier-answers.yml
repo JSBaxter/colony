@@ -1,0 +1,20 @@
+# This file is auto-managed by copier. Do not edit by hand.
+# `copier update` reads it to know which template version this cell is
+# pinned to. Commit it.
+
+_commit: fe604a7
+_src_path: gh:JSBaxter/stem-cell
+copyright_holder: James Baxter
+copyright_year: 2026
+github_remote: true
+include_agent_container: false
+include_bot_identity: true
+language: none
+license: MIT
+operator_email: james@jsbaxter.dev
+operator_name: James Baxter
+project_description: ''
+project_name: colony
+project_purpose: Container orchestration for the cell colony. Brings up atlas, morphogen,
+    and the listener service via docker compose; cells in the colony connect to these
+    as remote MCP servers.
