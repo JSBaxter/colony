@@ -116,13 +116,35 @@ services:
       - --remote-control
       - cytometer
 
-  # Add `agent-morphogen` here once that cell is spawned. Add `agent-colony`
-  # only if/when colony grows enough operator-driven agent work to warrant
-  # a dedicated session (currently most colony work is config edits the
-  # operator handles directly).
+  # Add `agent-morphogen` here once that cell is spawned.
+
+  agent-colony:
+    build:
+      context: ./dev-tools/agent-container
+    image: colony-agent:latest
+    container_name: agent-colony
+    hostname: colony-agent
+    restart: unless-stopped
+    working_dir: /workspace/colony
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/workspace/colony
+      - colony-agent-home:/home/agent
+      - colony-agent-venv-queue:/workspace/colony/dev-tools/queue/.venv
+      - ~/.config/colony-bot:/etc/colony-bot:ro
+    environment:
+      - AGENT_BOT_CRED_DIR=/etc/colony-bot
+    # See agent-atlas comment for why interactive variant.
+    command:
+      - claude
+      - --remote-control
+      - colony
 
 volumes:
   atlas-agent-home:
   atlas-agent-venv-queue:
   cytometer-agent-home:
   cytometer-agent-venv-queue:
+  colony-agent-home:
+  colony-agent-venv-queue:
