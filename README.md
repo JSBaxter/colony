@@ -34,29 +34,40 @@ clear error — that's the gate motivating the upstream work.
 
 Full architecture and per-cell Dockerfile contract: [`SPEC.md`](./SPEC.md).
 
+## Listener (observe-and-notify)
+
+Webhook receiver for cross-cell PR-merge events. Runs as a host
+process for now (not in compose). See [`listener/README.md`](./listener/README.md)
+for setup, the smee.io tunnel for local dev, and the rationale for
+why this doesn't auto-spawn Claude yet.
+
+```bash
+cd listener
+uv sync
+cp config.example.yml config.yml && $EDITOR config.yml
+uv run python -m listener
+```
+
 ## Active directories / files
 
 - `docker-compose.yml`
   The orchestration. Defines atlas + morphogen services on a private
   `colony-net` bridge network with named persistent volumes. Listener
-  service (phase 2) is stubbed out and commented.
+  service is intentionally **not** in compose — it runs as a host
+  process for the MVP (host-side `docker exec`-ability needed for
+  future trigger-spawn pattern).
 - `compose.override.example.yml`
   Local-dev overrides template. Copy to `compose.override.yml`
   (gitignored) for personal tweaks (live-reload mounts, log levels).
+- `listener/`
+  The webhook receiver service. Self-contained Python project
+  (FastAPI + uvicorn) under `uv`. See its README for setup.
 - `dev-tools/`
-<<<<<<< before updating
-  Local-only tooling. Houses the bundled `queue/` MCP server (used
-  by any agent working on this cell — though most colony work is
-  operator config, not agent code) and `agent-bot/` (GitHub App bot
-  identity wrappers; activates when phase 2 listener service work
-  needs PRs).
-=======
-  Local-only tooling that runs on a developer's machine. Houses
-  the bundled `queue/` MCP server, used by every agent working on
-  this cell.  Also houses `agent-container/` (Docker image for running the
-  agent in a bounded container).  And `agent-bot/` (GitHub App bot identity wrappers).
-(Add directories here as the cell grows.)
->>>>>>> after updating
+  Local-only tooling. Houses the bundled `queue/` MCP server (Python
+  via uv), `agent-container/` (Docker image for running Claude Code
+  in a bounded container with `bypassPermissions`), and `agent-bot/`
+  (GitHub App bot identity wrappers used by agents to author commits
+  and PRs).
 
 ## Reproduction
 
