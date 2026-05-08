@@ -1,0 +1,111 @@
+# Per-cell agent containers running long-running `claude remote-control`
+# sessions. Connect from the Claude mobile app's "Code" tab; each cell shows
+# up as a separate session you can dispatch tasks to.
+#
+# Why this is separate from docker-compose.yml:
+# - docker-compose.yml = colony-level *services* (atlas, morphogen) that
+#   long outlive any individual development effort.
+# - docker-compose.agents.yml = developer-time *agent sessions* per cell.
+#   Different lifecycle, different reasons to start/stop, different
+#   resource model (one per active cell, not one per service).
+#
+# One session per cell (`--spawn=session`); container restarts
+# unless-stopped so a 10-minute network outage that ends the underlying
+# remote-control session boots a fresh one automatically.
+#
+# Bot identity rides through the repo bind-mount (the agent inside calls
+# `dev-tools/agent-bot/as-bot.sh git ...` for any commit/push/PR; the
+# operator-shared credentials at ~/.config/colony-bot/ are NOT mounted —
+# the agent container has its own Anthropic OAuth state, but bot identity
+# requires the operator to bind-mount or set AGENT_BOT_CRED_DIR if the
+# agent is going to do PR operations).
+#
+# ---------------------------------------------------------------------
+# First-run per cell (one-time, OAuth state then persists in the
+# named volume):
+#
+#   docker compose -f docker-compose.agents.yml build
+#   docker compose -f docker-compose.agents.yml run --rm agent-atlas bash
+#       # inside the container:
+#       claude /login                # browser opens, complete OAuth
+#       exit
+#
+# Then bring up all sessions:
+#
+#   docker compose -f docker-compose.agents.yml up -d
+#
+# Verify each appears in the Claude mobile app's Code tab with a green dot.
+#
+# After that: PR merges land via your normal review flow; tap the cell's
+# session in the mobile app and send "continue with the next task in the
+# queue" or whatever steers the agent to the next unit of work.
+#
+# Tear down:
+#
+#   docker compose -f docker-compose.agents.yml down
+#
+# ---------------------------------------------------------------------
+#
+# NOTE on billing safety: claude inside these containers authenticates via
+# `claude.ai` OAuth (subscription quota). API keys are explicitly rejected
+# by Remote Control. We deliberately do NOT pass `ANTHROPIC_API_KEY` into
+# the container; if you have one set in your shell, compose ignores it
+# unless you list it in `environment:` here, which we don't.
+# ---------------------------------------------------------------------
+
+services:
+
+  agent-atlas:
+    build:
+      context: ../atlas
+      dockerfile: dev-tools/agent-container/Dockerfile
+    image: atlas-agent:latest
+    container_name: agent-atlas
+    hostname: atlas-agent
+    restart: unless-stopped
+    working_dir: /workspace/atlas
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../atlas:/workspace/atlas
+      - atlas-agent-home:/home/agent
+      - atlas-agent-venv-queue:/workspace/atlas/dev-tools/queue/.venv
+    command:
+      - claude
+      - remote-control
+      - --spawn=session
+      - --name
+      - atlas
+
+  agent-cytometer:
+    build:
+      context: ../cytometer
+      dockerfile: dev-tools/agent-container/Dockerfile
+    image: cytometer-agent:latest
+    container_name: agent-cytometer
+    hostname: cytometer-agent
+    restart: unless-stopped
+    working_dir: /workspace/cytometer
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../cytometer:/workspace/cytometer
+      - cytometer-agent-home:/home/agent
+      - cytometer-agent-venv-queue:/workspace/cytometer/dev-tools/queue/.venv
+    command:
+      - claude
+      - remote-control
+      - --spawn=session
+      - --name
+      - cytometer
+
+  # Add `agent-morphogen` here once that cell is spawned. Add `agent-colony`
+  # only if/when colony grows enough operator-driven agent work to warrant
+  # a dedicated session (currently most colony work is config edits the
+  # operator handles directly).
+
+volumes:
+  atlas-agent-home:
+  atlas-agent-venv-queue:
+  cytometer-agent-home:
+  cytometer-agent-venv-queue:

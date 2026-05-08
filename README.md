@@ -34,12 +34,38 @@ clear error — that's the gate motivating the upstream work.
 
 Full architecture and per-cell Dockerfile contract: [`SPEC.md`](./SPEC.md).
 
-## Listener (observe-and-notify)
+## Agent sessions per cell (Remote Control)
 
-Webhook receiver for cross-cell PR-merge events. Runs as a host
-process for now (not in compose). See [`listener/README.md`](./listener/README.md)
-for setup, the smee.io tunnel for local dev, and the rationale for
-why this doesn't auto-spawn Claude yet.
+Each cell runs a long-lived `claude remote-control` session inside its
+own agent container. The Claude mobile app's **Code** tab lists every
+running session — tap a cell to dispatch a task to it from your phone.
+
+```bash
+# one-time per cell — OAuth state then persists in the named volume:
+docker compose -f docker-compose.agents.yml build
+docker compose -f docker-compose.agents.yml run --rm agent-atlas bash
+#   inside the container:
+claude /login        # browser opens; complete OAuth
+exit
+
+# bring all agent sessions up:
+docker compose -f docker-compose.agents.yml up -d
+```
+
+Each container runs `claude remote-control --spawn=session --name <cell>`
+as its main process. Subscription billing only — Anthropic's Remote
+Control rejects API keys. See [`SPEC.md`](./SPEC.md) for the architectural
+rationale (why this replaced the original "listener auto-spawns
+`claude -p`" plan).
+
+## Listener (audit-only)
+
+Webhook receiver for cross-cell PR-merge events. **No longer the
+trigger mechanism** — Remote Control + the mobile app handle that.
+The listener stays as an audit log: every PR merge across the colony
+appends a JSONL record + rings the terminal bell, useful for
+observability when several cells are churning. Runs as a host process.
+See [`listener/README.md`](./listener/README.md) for setup.
 
 ```bash
 cd listener
@@ -51,23 +77,26 @@ uv run python -m listener
 ## Active directories / files
 
 - `docker-compose.yml`
-  The orchestration. Defines atlas + morphogen services on a private
-  `colony-net` bridge network with named persistent volumes. Listener
-  service is intentionally **not** in compose — it runs as a host
-  process for the MVP (host-side `docker exec`-ability needed for
-  future trigger-spawn pattern).
+  Colony-level **services**: atlas + morphogen as long-lived MCP
+  servers on a private `colony-net` bridge network with named
+  persistent volumes.
+- `docker-compose.agents.yml`
+  Per-cell **agent sessions**: one `claude remote-control` container
+  per cell, each registering as a session in the Claude mobile app's
+  Code tab. Different lifecycle from services compose — agent
+  sessions get started/stopped per development effort, services run
+  continuously.
 - `compose.override.example.yml`
   Local-dev overrides template. Copy to `compose.override.yml`
   (gitignored) for personal tweaks (live-reload mounts, log levels).
 - `listener/`
-  The webhook receiver service. Self-contained Python project
-  (FastAPI + uvicorn) under `uv`. See its README for setup.
+  Webhook receiver service. Audit log of cross-cell PR-merge events.
+  Self-contained Python project (FastAPI + uvicorn) under `uv`.
 - `dev-tools/`
   Local-only tooling. Houses the bundled `queue/` MCP server (Python
-  via uv), `agent-container/` (Docker image for running Claude Code
-  in a bounded container with `bypassPermissions`), and `agent-bot/`
-  (GitHub App bot identity wrappers used by agents to author commits
-  and PRs).
+  via uv), `agent-container/` (Docker image used by both the agents
+  compose and ad-hoc `run.sh` invocations), and `agent-bot/` (GitHub
+  App bot identity wrappers used by agents to author commits and PRs).
 
 ## Reproduction
 

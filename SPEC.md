@@ -4,9 +4,12 @@
 
 ## Purpose
 
-Colony is the cell that operates other cells. It runs colony-level services (atlas, morphogen, eventually a listener service) as long-lived containers, manages their network and storage, and gives the operator a single `docker compose` interface to bring the whole infrastructure up or down.
+Colony is the cell that operates other cells. It does two related things:
 
-It is not itself a colony-level *service* — it's a *tooling* cell. Its primary artifacts are compose files, Dockerfiles, and (eventually) the listener service code.
+1. **Runs colony-level services** (atlas, morphogen) as long-lived containers — the cells in the colony talk to these as remote MCP servers.
+2. **Hosts the per-cell agent containers** — each cell has a long-running `claude remote-control` session in its own container, which the operator dispatches tasks to from the Claude mobile app's Code tab.
+
+It is not itself a colony-level *service* — it's a *tooling* cell. Its primary artifacts are compose files, Dockerfiles, and the listener service (now audit-only).
 
 ## Position in the colony
 
@@ -20,7 +23,19 @@ Colony has no runtime dependency on other cells. Its compose file references `at
 |-------------|------------------------|-------|-----------------|-------------------|
 | atlas       | `../atlas`             | 8484  | `atlas-data`    | Pending Dockerfile (atlas implementation in progress) |
 | morphogen   | `../morphogen`         | 8485  | `morphogen-data`| Pending cell spawn + Dockerfile |
-| listener    | `./listener`           | 8486  | —               | Phase 2 (deferred — see end of spec) |
+| listener    | (host process)         | 8486  | —               | Built; audit-only role (see "Listener" section) |
+
+### Per-cell agent sessions (`docker-compose.agents.yml`)
+
+A separate compose file runs one `claude remote-control` container per cell, registered with the Claude mobile app.
+
+| Container     | Image source                                    | Cell repo bind  |
+|---------------|-------------------------------------------------|-----------------|
+| agent-atlas   | `../atlas/dev-tools/agent-container/Dockerfile` | `../atlas`      |
+| agent-cytometer | `../cytometer/dev-tools/agent-container/Dockerfile` | `../cytometer` |
+| (more as cells are spawned)                                                       | |
+
+Each container's CMD is `claude remote-control --spawn=session --name <cell>`. Subscription billing only — Anthropic's Remote Control rejects API keys. Per-cell named volumes hold the agent's `~/.claude` state (OAuth + session memory) so containers can be torn down and restarted without re-auth.
 
 ### Network
 
@@ -64,32 +79,34 @@ docker compose down        # stops services; preserves volumes
 docker compose down -v     # nukes volumes (rare; loses all atlas/morphogen state)
 ```
 
-## Phase 2 — listener service
+## Trigger mechanism — Anthropic Remote Control + mobile app
 
-A small Python service that:
+Earlier drafts of this spec assumed the listener would auto-spawn agents via subprocess (`claude -p`). That plan died on contact with Anthropic's billing-routing landscape: `claude -p` had a documented bug ([anthropics/claude-code#43333](https://github.com/anthropics/claude-code/issues/43333), since fixed) that routed Pro/Max OAuth credentials through per-token API billing, and the April 2026 "third-party harness" classification ([#56250](https://github.com/anthropics/claude-code/issues/56250), open) left subprocess-spawning eligibility undocumented. For a Pro/Max subscriber, getting this wrong is potentially financially catastrophic.
 
-1. Receives GitHub webhooks on `:8486`
-2. Validates HMAC signature against `~/.config/colony-bot/webhook_secret`
-3. Parses `pull_request.closed` events with `merged: true`
-4. Looks up the cell by repo name → identifies the cell's container
-5. Triggers a fresh Claude Code session: `docker exec cell-<name> claude -p "claim next task"`
-6. Logs everything for audit
+**The replacement is Anthropic's Remote Control feature** ([docs](https://code.claude.com/docs/en/remote-control)). Each cell runs `claude remote-control --spawn=session` inside its agent container. The session registers via outbound HTTPS with the Anthropic API and waits for connections. The Claude mobile app lists all running sessions in a "Code" tab. After a PR merges, the operator taps the cell's session and dispatches "continue with the next task" — the desktop session does the work, opens the next PR, and goes back to idle awaiting the next dispatch.
 
-Lives at `./listener/` inside this repo as a third docker-compose service alongside atlas + morphogen. **Not its own cell yet** — small (~150 LoC), tightly coupled to colony's orchestration. If it grows (multi-event types, dispatch logic, observability), promote to a cell called **reflex** (automatic stimulus response — biologically accurate).
+This sidesteps the billing risk entirely (Remote Control is subscription-billed, no API path). It also removes the need for any locally-built trigger machinery — the listener's original "auto-spawn on merge" purpose is now Anthropic's responsibility.
 
-For solo+localhost dev, the operator uses [smee.io](https://smee.io/) or [ngrok](https://ngrok.com/) to relay GitHub webhooks → `localhost:8486`. Once colony is hosted on a server with a public URL, the relay isn't needed.
+## Listener — audit only
+
+The listener still ships at `./listener/` as a FastAPI host process. Its role is now **audit-log only**: receive GitHub webhooks, verify HMAC, append PR-merge events to a JSONL log, ring a terminal bell. Useful for observability when several cells are churning and you want a single `tail -f` view of what merged where.
+
+It runs as a host process (not in compose) because it's small enough that containerizing adds more friction than value, and the trigger problem it was originally built to solve no longer needs solving by us.
+
+If we ever need real autonomy (e.g. PR merges trigger a fresh session without operator tap), promotion path: swap the listener's "log" action for a real subprocess invocation once [#56250](https://github.com/anthropics/claude-code/issues/56250) clarifies and harness-mode billing is officially safe. Until then, the manual-dispatch loop is the right shape.
 
 ## Decisions locked
 
-1. **Containers per service cell**, not per agent. Cell agents (Claude Code) currently run on the operator host; only the long-lived services run in containers. Container-per-agent is a future move when multi-cell concurrency becomes painful.
-2. **Sibling-path build context** for atlas + morphogen. Assumes colocated repos. For multi-host later, switch to image registry.
-3. **No shared workspace volume** in v1. Artifact passing via URLs in morphogen payloads.
+1. **Containers per service AND per agent.** Two compose files, two lifecycles: services compose for atlas + morphogen (long-lived MCP daemons), agents compose for one `claude remote-control` container per cell (long-lived agent session). Earlier drafts kept agents on the operator host; that flipped once Remote Control made phone-first operation viable.
+2. **Sibling-path build context** for both compose files. Assumes colocated repos at `~/Documents/repos/cells/<name>/`. For multi-host later, switch to image registry.
+3. **No shared workspace volume** in v1. Artifact passing via URLs in morphogen payloads. Per-cell named volumes for `~/.claude` state and the queue's `.venv` give isolation without sharing.
 4. **Solo + localhost** for now. Remote hosting is a follow-up after security tightening.
 5. **Bot identity gates approval**, not workflow. Branch protection requires bot-authored PRs to be approved by operator before merge; the workflow rule "exit after PR" is documented in CONTRIBUTING.md and per-cell HANDOFF.md.
+6. **Subscription billing only.** Both for service cells (they don't call Claude at all) and agent containers (Remote Control rejects API keys; we don't pass `ANTHROPIC_API_KEY` into containers). One accidental API run on a Pro/Max account can exceed a year of subscription cost; the architecture is shaped to make accidental API billing structurally impossible.
 
 ## Open questions
 
 1. **Health check endpoint convention** for atlas/morphogen — `/health`, `/healthz`, or something else? Pick one and put it in atlas's SPEC.md as a contract.
 2. **Service discovery beyond localhost** — when colony moves to a server, hostnames change; cell `.mcp.json` files would need to be parameterized. Worth a small wrapper script when remote hosting becomes real.
 3. **TLS** — trivial on localhost (skip), serious work on a public host. Plan with remote hosting.
-4. **Per-cell agent containers** — the template's `include_agent_container` option (currently false everywhere) generates an agent-runs-Claude-Code container. When we want sandboxed parallel agent sessions, opt cells in.
+4. **Bot credential propagation into agent containers.** The agent-container's bind-mount picks up the cell repo, but the operator's shared bot credentials at `~/.config/colony-bot/` are not inside the bind-mount. For agent runs that need to commit/push, the agent needs `AGENT_BOT_CRED_DIR` either bind-mounted in or set to a path inside the cell repo (`.agent-bot/`, gitignored). Currently TBD; the first cell that actually needs autonomous PR opens will force this decision.
