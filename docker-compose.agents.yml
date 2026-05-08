@@ -69,11 +69,15 @@ services:
       - ../atlas:/workspace/atlas
       - atlas-agent-home:/home/agent
       - atlas-agent-venv-queue:/workspace/atlas/dev-tools/queue/.venv
+    # Interactive variant (`claude --remote-control NAME`), not server
+    # mode (`claude remote-control --spawn=session`). Server mode prints
+    # the activation banner but doesn't reliably register the session in
+    # the mobile Code tab in this containerized + TTY setup; the
+    # interactive variant is one session per process — exactly the shape
+    # we want — and registers cleanly. Validated empirically.
     command:
       - claude
-      - remote-control
-      - --spawn=session
-      - --name
+      - --remote-control
       - atlas
 
   agent-cytometer:
@@ -90,11 +94,10 @@ services:
       - ../cytometer:/workspace/cytometer
       - cytometer-agent-home:/home/agent
       - cytometer-agent-venv-queue:/workspace/cytometer/dev-tools/queue/.venv
+    # See agent-atlas comment for why interactive variant.
     command:
       - claude
-      - remote-control
-      - --spawn=session
-      - --name
+      - --remote-control
       - cytometer
 
   # Add `agent-morphogen` here once that cell is spawned. Add `agent-colony`
