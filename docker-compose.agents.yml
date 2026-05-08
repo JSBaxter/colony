@@ -57,8 +57,7 @@ services:
 
   agent-atlas:
     build:
-      context: ../atlas
-      dockerfile: dev-tools/agent-container/Dockerfile
+      context: ../atlas/dev-tools/agent-container
     image: atlas-agent:latest
     container_name: agent-atlas
     hostname: atlas-agent
@@ -79,8 +78,7 @@ services:
 
   agent-cytometer:
     build:
-      context: ../cytometer
-      dockerfile: dev-tools/agent-container/Dockerfile
+      context: ../cytometer/dev-tools/agent-container
     image: cytometer-agent:latest
     container_name: agent-cytometer
     hostname: cytometer-agent
