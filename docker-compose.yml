@@ -1,0 +1,71 @@
+# colony — orchestration for atlas + morphogen + (phase 2) listener.
+#
+# Run from this directory:
+#   docker compose build       # build images from sibling cell repos
+#   docker compose up -d       # start services
+#   docker compose down        # stop (preserves volumes)
+#
+# Each service cell owns its own Dockerfile at the cell's repo root.
+# This compose file references those Dockerfiles via sibling paths,
+# assuming the colony layout: cells/{atlas,morphogen,colony,...}/
+#
+# If a Dockerfile is missing, build fails with a clear error.
+
+services:
+  atlas:
+    build:
+      context: ../atlas
+      dockerfile: Dockerfile
+    container_name: atlas
+    ports:
+      - "8484:8484"
+    volumes:
+      - atlas-data:/var/atlas
+    networks:
+      - colony-net
+    restart: unless-stopped
+
+  morphogen:
+    build:
+      context: ../morphogen
+      dockerfile: Dockerfile
+    container_name: morphogen
+    ports:
+      - "8485:8485"
+    volumes:
+      - morphogen-data:/var/morphogen
+    networks:
+      - colony-net
+    depends_on:
+      - atlas         # logical dep; morphogen still functions if atlas restarts
+    restart: unless-stopped
+
+  # Phase 2 — listener service. Uncomment when implemented (see SPEC.md).
+  #
+  # listener:
+  #   build:
+  #     context: ./listener
+  #     dockerfile: Dockerfile
+  #   container_name: listener
+  #   ports:
+  #     - "8486:8486"
+  #   secrets:
+  #     - webhook_secret
+  #   networks:
+  #     - colony-net
+  #   restart: unless-stopped
+  #   depends_on:
+  #     - atlas
+  #     - morphogen
+
+networks:
+  colony-net:
+    driver: bridge
+
+volumes:
+  atlas-data:
+  morphogen-data:
+
+# secrets:
+#   webhook_secret:
+#     file: ~/.config/colony-bot/webhook_secret

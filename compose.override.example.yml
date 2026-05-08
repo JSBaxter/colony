@@ -1,0 +1,28 @@
+# Local-dev overrides example. Copy to compose.override.yml (gitignored)
+# and edit. Docker compose merges this on top of docker-compose.yml.
+#
+# Common overrides:
+# - mount source for live reload
+# - bump log level
+# - bind to a non-default port to avoid conflicts
+# - skip starting a service the operator isn't working on right now
+
+services:
+  atlas:
+    # # Live-reload during atlas development — mount source read-write so
+    # # in-container processes see operator's edits without rebuild:
+    # volumes:
+    #   - ../atlas/src:/app/src
+    # environment:
+    #   - LOG_LEVEL=debug
+    # # Start a shell instead of the server:
+    # entrypoint: ["bash"]
+    # tty: true
+    # stdin_open: true
+
+  morphogen:
+    # # Same patterns as atlas:
+    # volumes:
+    #   - ../morphogen/src:/app/src
+    # environment:
+    #   - LOG_LEVEL=debug

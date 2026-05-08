@@ -23,6 +23,10 @@ dev-tools/queue/queue.db-*
 # Bot identity credentials
 .agent-bot/
 
+# Local docker-compose overrides
+compose.override.yml
+compose.override.yaml
+
 # Editor / OS
 .idea/
 .vscode/
