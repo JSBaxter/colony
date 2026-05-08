@@ -27,6 +27,9 @@ dev-tools/queue/queue.db-*
 compose.override.yml
 compose.override.yaml
 
+# Listener runtime config (contains paths + may inline secret) — example ships
+listener/config.yml
+
 # Editor / OS
 .idea/
 .vscode/

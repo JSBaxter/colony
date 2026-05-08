@@ -1,0 +1,19 @@
+# colony listener config — copy to config.yml (gitignored) and fill in.
+
+# Path to the file containing the GitHub App webhook secret (chmod 600).
+# Set this on the App's General settings page first, then save the same
+# value here. Alternative: webhook_secret: <literal-string> (less safe).
+webhook_secret_file: ~/.config/colony-bot/webhook_secret
+
+# Where the listener writes its append-only audit log.
+audit_log_path: ~/.local/state/colony/listener/triggers.jsonl
+
+# Map cell name → repo path on disk. The cell name must match the
+# trailing segment of the repo's full name (e.g. JSBaxter/atlas → atlas).
+cells:
+  atlas:
+    path: ~/Documents/repos/cells/atlas
+  cytometer:
+    path: ~/Documents/repos/cells/cytometer
+  colony:
+    path: ~/Documents/repos/cells/colony
