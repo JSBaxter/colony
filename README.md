@@ -63,10 +63,11 @@ uv run python -m listener
   The webhook receiver service. Self-contained Python project
   (FastAPI + uvicorn) under `uv`. See its README for setup.
 - `dev-tools/`
-  Local-only tooling. Houses the bundled `queue/` MCP server (used
-  by any agent working on this cell — though most colony work is
-  operator config, not agent code) and `agent-bot/` (GitHub App bot
-  identity wrappers).
+  Local-only tooling. Houses the bundled `queue/` MCP server (Python
+  via uv), `agent-container/` (Docker image for running Claude Code
+  in a bounded container with `bypassPermissions`), and `agent-bot/`
+  (GitHub App bot identity wrappers used by agents to author commits
+  and PRs).
 
 ## Reproduction
 
