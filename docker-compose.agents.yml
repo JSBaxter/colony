@@ -13,12 +13,22 @@
 # unless-stopped so a 10-minute network outage that ends the underlying
 # remote-control session boots a fresh one automatically.
 #
-# Bot identity rides through the repo bind-mount (the agent inside calls
-# `dev-tools/agent-bot/as-bot.sh git ...` for any commit/push/PR; the
-# operator-shared credentials at ~/.config/colony-bot/ are NOT mounted —
-# the agent container has its own Anthropic OAuth state, but bot identity
-# requires the operator to bind-mount or set AGENT_BOT_CRED_DIR if the
-# agent is going to do PR operations).
+# Bot identity: the operator's shared GitHub App credentials at
+# `~/.config/colony-bot/` are bind-mounted read-only into each container
+# at `/etc/colony-bot`, and `AGENT_BOT_CRED_DIR` is set to that path so
+# `dev-tools/agent-bot/{mint-token,as-bot}.sh` find the credentials with
+# zero per-cell setup. The mount is read-only — the in-container agent
+# can read the private key (mints installation tokens via JWT) but
+# cannot modify it. Trust model: a compromised agent inside the
+# container can author bot-identity commits/PRs, but operator approval
+# still gates merges (branch protection enforces this).
+#
+# UID note: the in-container `agent` user is uid 1000. The bind-mount
+# preserves host file ownership numerically. Most personal Linux setups
+# have the primary user at uid 1000, so this works out of the box. If
+# your host uid differs, the agent won't be able to read the chmod-600
+# credential files; either chmod the host files more permissively (not
+# recommended) or rebuild the image with `useradd ... --uid <your-uid>`.
 #
 # ---------------------------------------------------------------------
 # First-run per cell (one-time, OAuth state then persists in the
@@ -57,8 +67,7 @@ services:
 
   agent-atlas:
     build:
-      context: ../atlas
-      dockerfile: dev-tools/agent-container/Dockerfile
+      context: ../atlas/dev-tools/agent-container
     image: atlas-agent:latest
     container_name: agent-atlas
     hostname: atlas-agent
@@ -70,17 +79,23 @@ services:
       - ../atlas:/workspace/atlas
       - atlas-agent-home:/home/agent
       - atlas-agent-venv-queue:/workspace/atlas/dev-tools/queue/.venv
+      - ~/.config/colony-bot:/etc/colony-bot:ro
+    environment:
+      - AGENT_BOT_CRED_DIR=/etc/colony-bot
+    # Interactive variant (`claude --remote-control NAME`), not server
+    # mode (`claude remote-control --spawn=session`). Server mode prints
+    # the activation banner but doesn't reliably register the session in
+    # the mobile Code tab in this containerized + TTY setup; the
+    # interactive variant is one session per process — exactly the shape
+    # we want — and registers cleanly. Validated empirically.
     command:
       - claude
-      - remote-control
-      - --spawn=session
-      - --name
+      - --remote-control
       - atlas
 
   agent-cytometer:
     build:
-      context: ../cytometer
-      dockerfile: dev-tools/agent-container/Dockerfile
+      context: ../cytometer/dev-tools/agent-container
     image: cytometer-agent:latest
     container_name: agent-cytometer
     hostname: cytometer-agent
@@ -92,11 +107,13 @@ services:
       - ../cytometer:/workspace/cytometer
       - cytometer-agent-home:/home/agent
       - cytometer-agent-venv-queue:/workspace/cytometer/dev-tools/queue/.venv
+      - ~/.config/colony-bot:/etc/colony-bot:ro
+    environment:
+      - AGENT_BOT_CRED_DIR=/etc/colony-bot
+    # See agent-atlas comment for why interactive variant.
     command:
       - claude
-      - remote-control
-      - --spawn=session
-      - --name
+      - --remote-control
       - cytometer
 
   # Add `agent-morphogen` here once that cell is spawned. Add `agent-colony`
