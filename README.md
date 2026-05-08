@@ -44,11 +44,19 @@ Full architecture and per-cell Dockerfile contract: [`SPEC.md`](./SPEC.md).
   Local-dev overrides template. Copy to `compose.override.yml`
   (gitignored) for personal tweaks (live-reload mounts, log levels).
 - `dev-tools/`
+<<<<<<< before updating
   Local-only tooling. Houses the bundled `queue/` MCP server (used
   by any agent working on this cell — though most colony work is
   operator config, not agent code) and `agent-bot/` (GitHub App bot
   identity wrappers; activates when phase 2 listener service work
   needs PRs).
+=======
+  Local-only tooling that runs on a developer's machine. Houses
+  the bundled `queue/` MCP server, used by every agent working on
+  this cell.  Also houses `agent-container/` (Docker image for running the
+  agent in a bounded container).  And `agent-bot/` (GitHub App bot identity wrappers).
+(Add directories here as the cell grows.)
+>>>>>>> after updating
 
 ## Reproduction
 
